@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -90,6 +91,66 @@ func (e *Env) Lookup(key string) (string, bool) {
 // Get 与 Lookup 类似，但在键不存在时返回空字符串。
 func (e *Env) Get(key string) string {
 	value, _ := e.Lookup(key)
+	return value
+}
+
+// Bool 返回键对应的布尔值。键不存在或值无法解析为布尔值时返回 false。
+func (e *Env) Bool(key string) bool {
+	value, err := strconv.ParseBool(e.Get(key))
+	return err == nil && value
+}
+
+// Int 返回键对应的十进制整数。键不存在、值无法解析或超出 int 范围时返回 0。
+func (e *Env) Int(key string) int {
+	value, err := strconv.ParseInt(e.Get(key), 10, strconv.IntSize)
+	if err != nil {
+		return 0
+	}
+	return int(value)
+}
+
+// Int64 返回键对应的十进制 64 位整数。键不存在、值无法解析或超出 int64 范围时返回 0。
+func (e *Env) Int64(key string) int64 {
+	value, err := strconv.ParseInt(e.Get(key), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+// Uint 返回键对应的十进制无符号整数。键不存在、值无法解析、为负数或超出 uint 范围时返回 0。
+func (e *Env) Uint(key string) uint {
+	value, err := strconv.ParseUint(e.Get(key), 10, strconv.IntSize)
+	if err != nil {
+		return 0
+	}
+	return uint(value)
+}
+
+// Uint64 返回键对应的十进制 64 位无符号整数。键不存在、值无法解析或为负数时返回 0。
+func (e *Env) Uint64(key string) uint64 {
+	value, err := strconv.ParseUint(e.Get(key), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+// Float32 返回键对应的 32 位浮点数。键不存在、值无法解析或超出 float32 范围时返回 0。
+func (e *Env) Float32(key string) float32 {
+	value, err := strconv.ParseFloat(e.Get(key), 32)
+	if err != nil {
+		return 0
+	}
+	return float32(value)
+}
+
+// Float64 返回键对应的 64 位浮点数。键不存在或值无法解析为浮点数时返回 0。
+func (e *Env) Float64(key string) float64 {
+	value, err := strconv.ParseFloat(e.Get(key), 64)
+	if err != nil {
+		return 0
+	}
 	return value
 }
 
