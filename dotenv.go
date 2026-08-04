@@ -27,7 +27,7 @@ type Env struct {
 // 回退查询进程环境变量。
 func Load(filenames ...string) (*Env, error) {
 	env := &Env{values: make(map[string]string)}
-	if len(filenames) == 0 {
+	if len(filenames) == 0 || len(filenames) == 1 && strings.TrimSpace(filenames[0]) == "" {
 		filenames = []string{".env"}
 	}
 	for _, filename := range filenames {
