@@ -139,6 +139,33 @@ func (e *Env) Int(key string) int {
 	return int(value)
 }
 
+// Int8 返回键对应的十进制 8 位整数。键不存在、值无法解析或超出 int8 范围时返回 0。
+func (e *Env) Int8(key string) int8 {
+	value, err := strconv.ParseInt(e.Get(key), 10, 8)
+	if err != nil {
+		return 0
+	}
+	return int8(value)
+}
+
+// Int16 返回键对应的十进制 16 位整数。键不存在、值无法解析或超出 int16 范围时返回 0。
+func (e *Env) Int16(key string) int16 {
+	value, err := strconv.ParseInt(e.Get(key), 10, 16)
+	if err != nil {
+		return 0
+	}
+	return int16(value)
+}
+
+// Int32 返回键对应的十进制 32 位整数。键不存在、值无法解析或超出 int32 范围时返回 0。
+func (e *Env) Int32(key string) int32 {
+	value, err := strconv.ParseInt(e.Get(key), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int32(value)
+}
+
 // Int64 返回键对应的十进制 64 位整数。键不存在、值无法解析或超出 int64 范围时返回 0。
 func (e *Env) Int64(key string) int64 {
 	value, err := strconv.ParseInt(e.Get(key), 10, 64)
@@ -155,6 +182,33 @@ func (e *Env) Uint(key string) uint {
 		return 0
 	}
 	return uint(value)
+}
+
+// Uint8 返回键对应的十进制 8 位无符号整数。键不存在、值无法解析、为负数或超出 uint8 范围时返回 0。
+func (e *Env) Uint8(key string) uint8 {
+	value, err := strconv.ParseUint(e.Get(key), 10, 8)
+	if err != nil {
+		return 0
+	}
+	return uint8(value)
+}
+
+// Uint16 返回键对应的十进制 16 位无符号整数。键不存在、值无法解析、为负数或超出 uint16 范围时返回 0。
+func (e *Env) Uint16(key string) uint16 {
+	value, err := strconv.ParseUint(e.Get(key), 10, 16)
+	if err != nil {
+		return 0
+	}
+	return uint16(value)
+}
+
+// Uint32 返回键对应的十进制 32 位无符号整数。键不存在、值无法解析、为负数或超出 uint32 范围时返回 0。
+func (e *Env) Uint32(key string) uint32 {
+	value, err := strconv.ParseUint(e.Get(key), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(value)
 }
 
 // Uint64 返回键对应的十进制 64 位无符号整数。键不存在、值无法解析或为负数时返回 0。
