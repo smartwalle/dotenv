@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Env 保存从 .env 文件读取的值。文件中不存在的键会回退查询进程环境变量。
@@ -308,6 +309,25 @@ func (e *Env) LookupFloat64(key string) (float64, bool) {
 // Float64 返回键对应的 64 位浮点数。键不存在或值无法解析为浮点数时返回 0。
 func (e *Env) Float64(key string) float64 {
 	value, _ := e.LookupFloat64(key)
+	return value
+}
+
+// LookupDuration 返回键对应的时长。返回的布尔值表示键存在且值可按 time.ParseDuration 解析。
+func (e *Env) LookupDuration(key string) (time.Duration, bool) {
+	value, ok := e.Lookup(key)
+	if !ok {
+		return 0, false
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+// Duration 返回键对应的时长。键不存在或值无法按 time.ParseDuration 解析时返回 0。
+func (e *Env) Duration(key string) time.Duration {
+	value, _ := e.LookupDuration(key)
 	return value
 }
 
