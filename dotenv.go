@@ -124,118 +124,200 @@ func (e *Env) Get(key string) string {
 	return value
 }
 
+// LookupBool 返回键对应的布尔值。返回的布尔值表示键存在且值可解析为布尔值。
+func (e *Env) LookupBool(key string) (bool, bool) {
+	value, ok := e.Lookup(key)
+	if !ok {
+		return false, false
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, false
+	}
+	return parsed, true
+}
+
 // Bool 返回键对应的布尔值。键不存在或值无法解析为布尔值时返回 false。
 func (e *Env) Bool(key string) bool {
-	value, err := strconv.ParseBool(e.Get(key))
-	return err == nil && value
+	value, _ := e.LookupBool(key)
+	return value
+}
+
+// LookupInt 返回键对应的十进制整数。返回的布尔值表示键存在且值可解析为 int。
+func (e *Env) LookupInt(key string) (int, bool) {
+	value, ok := e.lookupInt(key, strconv.IntSize)
+	return int(value), ok
 }
 
 // Int 返回键对应的十进制整数。键不存在、值无法解析或超出 int 范围时返回 0。
 func (e *Env) Int(key string) int {
-	value, err := strconv.ParseInt(e.Get(key), 10, strconv.IntSize)
-	if err != nil {
-		return 0
-	}
-	return int(value)
+	value, _ := e.LookupInt(key)
+	return value
+}
+
+// LookupInt8 返回键对应的十进制 8 位整数。返回的布尔值表示键存在且值可解析为 int8。
+func (e *Env) LookupInt8(key string) (int8, bool) {
+	value, ok := e.lookupInt(key, 8)
+	return int8(value), ok
 }
 
 // Int8 返回键对应的十进制 8 位整数。键不存在、值无法解析或超出 int8 范围时返回 0。
 func (e *Env) Int8(key string) int8 {
-	value, err := strconv.ParseInt(e.Get(key), 10, 8)
-	if err != nil {
-		return 0
-	}
-	return int8(value)
+	value, _ := e.LookupInt8(key)
+	return value
+}
+
+// LookupInt16 返回键对应的十进制 16 位整数。返回的布尔值表示键存在且值可解析为 int16。
+func (e *Env) LookupInt16(key string) (int16, bool) {
+	value, ok := e.lookupInt(key, 16)
+	return int16(value), ok
 }
 
 // Int16 返回键对应的十进制 16 位整数。键不存在、值无法解析或超出 int16 范围时返回 0。
 func (e *Env) Int16(key string) int16 {
-	value, err := strconv.ParseInt(e.Get(key), 10, 16)
-	if err != nil {
-		return 0
-	}
-	return int16(value)
+	value, _ := e.LookupInt16(key)
+	return value
+}
+
+// LookupInt32 返回键对应的十进制 32 位整数。返回的布尔值表示键存在且值可解析为 int32。
+func (e *Env) LookupInt32(key string) (int32, bool) {
+	value, ok := e.lookupInt(key, 32)
+	return int32(value), ok
 }
 
 // Int32 返回键对应的十进制 32 位整数。键不存在、值无法解析或超出 int32 范围时返回 0。
 func (e *Env) Int32(key string) int32 {
-	value, err := strconv.ParseInt(e.Get(key), 10, 32)
-	if err != nil {
-		return 0
-	}
-	return int32(value)
+	value, _ := e.LookupInt32(key)
+	return value
+}
+
+// LookupInt64 返回键对应的十进制 64 位整数。返回的布尔值表示键存在且值可解析为 int64。
+func (e *Env) LookupInt64(key string) (int64, bool) {
+	return e.lookupInt(key, 64)
 }
 
 // Int64 返回键对应的十进制 64 位整数。键不存在、值无法解析或超出 int64 范围时返回 0。
 func (e *Env) Int64(key string) int64 {
-	value, err := strconv.ParseInt(e.Get(key), 10, 64)
-	if err != nil {
-		return 0
-	}
+	value, _ := e.LookupInt64(key)
 	return value
+}
+
+// LookupUint 返回键对应的十进制无符号整数。返回的布尔值表示键存在且值可解析为 uint。
+func (e *Env) LookupUint(key string) (uint, bool) {
+	value, ok := e.lookupUint(key, strconv.IntSize)
+	return uint(value), ok
 }
 
 // Uint 返回键对应的十进制无符号整数。键不存在、值无法解析、为负数或超出 uint 范围时返回 0。
 func (e *Env) Uint(key string) uint {
-	value, err := strconv.ParseUint(e.Get(key), 10, strconv.IntSize)
-	if err != nil {
-		return 0
-	}
-	return uint(value)
+	value, _ := e.LookupUint(key)
+	return value
+}
+
+// LookupUint8 返回键对应的十进制 8 位无符号整数。返回的布尔值表示键存在且值可解析为 uint8。
+func (e *Env) LookupUint8(key string) (uint8, bool) {
+	value, ok := e.lookupUint(key, 8)
+	return uint8(value), ok
 }
 
 // Uint8 返回键对应的十进制 8 位无符号整数。键不存在、值无法解析、为负数或超出 uint8 范围时返回 0。
 func (e *Env) Uint8(key string) uint8 {
-	value, err := strconv.ParseUint(e.Get(key), 10, 8)
-	if err != nil {
-		return 0
-	}
-	return uint8(value)
+	value, _ := e.LookupUint8(key)
+	return value
+}
+
+// LookupUint16 返回键对应的十进制 16 位无符号整数。返回的布尔值表示键存在且值可解析为 uint16。
+func (e *Env) LookupUint16(key string) (uint16, bool) {
+	value, ok := e.lookupUint(key, 16)
+	return uint16(value), ok
 }
 
 // Uint16 返回键对应的十进制 16 位无符号整数。键不存在、值无法解析、为负数或超出 uint16 范围时返回 0。
 func (e *Env) Uint16(key string) uint16 {
-	value, err := strconv.ParseUint(e.Get(key), 10, 16)
-	if err != nil {
-		return 0
-	}
-	return uint16(value)
+	value, _ := e.LookupUint16(key)
+	return value
+}
+
+// LookupUint32 返回键对应的十进制 32 位无符号整数。返回的布尔值表示键存在且值可解析为 uint32。
+func (e *Env) LookupUint32(key string) (uint32, bool) {
+	value, ok := e.lookupUint(key, 32)
+	return uint32(value), ok
 }
 
 // Uint32 返回键对应的十进制 32 位无符号整数。键不存在、值无法解析、为负数或超出 uint32 范围时返回 0。
 func (e *Env) Uint32(key string) uint32 {
-	value, err := strconv.ParseUint(e.Get(key), 10, 32)
-	if err != nil {
-		return 0
-	}
-	return uint32(value)
+	value, _ := e.LookupUint32(key)
+	return value
+}
+
+// LookupUint64 返回键对应的十进制 64 位无符号整数。返回的布尔值表示键存在且值可解析为 uint64。
+func (e *Env) LookupUint64(key string) (uint64, bool) {
+	return e.lookupUint(key, 64)
 }
 
 // Uint64 返回键对应的十进制 64 位无符号整数。键不存在、值无法解析或为负数时返回 0。
 func (e *Env) Uint64(key string) uint64 {
-	value, err := strconv.ParseUint(e.Get(key), 10, 64)
-	if err != nil {
-		return 0
-	}
+	value, _ := e.LookupUint64(key)
 	return value
+}
+
+// LookupFloat32 返回键对应的 32 位浮点数。返回的布尔值表示键存在且值可解析为 float32。
+func (e *Env) LookupFloat32(key string) (float32, bool) {
+	value, ok := e.lookupFloat(key, 32)
+	return float32(value), ok
 }
 
 // Float32 返回键对应的 32 位浮点数。键不存在、值无法解析或超出 float32 范围时返回 0。
 func (e *Env) Float32(key string) float32 {
-	value, err := strconv.ParseFloat(e.Get(key), 32)
-	if err != nil {
-		return 0
-	}
-	return float32(value)
+	value, _ := e.LookupFloat32(key)
+	return value
+}
+
+// LookupFloat64 返回键对应的 64 位浮点数。返回的布尔值表示键存在且值可解析为 float64。
+func (e *Env) LookupFloat64(key string) (float64, bool) {
+	return e.lookupFloat(key, 64)
 }
 
 // Float64 返回键对应的 64 位浮点数。键不存在或值无法解析为浮点数时返回 0。
 func (e *Env) Float64(key string) float64 {
-	value, err := strconv.ParseFloat(e.Get(key), 64)
-	if err != nil {
-		return 0
-	}
+	value, _ := e.LookupFloat64(key)
 	return value
+}
+
+func (e *Env) lookupInt(key string, bitSize int) (int64, bool) {
+	value, ok := e.Lookup(key)
+	if !ok {
+		return 0, false
+	}
+	parsed, err := strconv.ParseInt(value, 10, bitSize)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func (e *Env) lookupUint(key string, bitSize int) (uint64, bool) {
+	value, ok := e.Lookup(key)
+	if !ok {
+		return 0, false
+	}
+	parsed, err := strconv.ParseUint(value, 10, bitSize)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func (e *Env) lookupFloat(key string, bitSize int) (float64, bool) {
+	value, ok := e.Lookup(key)
+	if !ok {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(value, bitSize)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }
 
 // Inject 将从 .env 文件加载的值写入当前进程环境变量，并覆盖同名变量。
