@@ -2,8 +2,10 @@
 package dotenv
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -40,29 +42,54 @@ func Load(filenames ...string) (*Env, error) {
 }
 
 func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string) error {
-	contents, err := os.ReadFile(filename)
+	file, err := os.Open(filename)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
-	// Windows 编辑器常会写入 UTF-8 BOM，但它不属于第一个变量名。
-	lines := strings.Split(strings.TrimPrefix(string(contents), "\uFEFF"), "\n")
-	for index := 0; index < len(lines); index++ {
-		lineNumber := index + 1
-		line := strings.TrimSuffix(lines[index], "\r")
+	reader := bufio.NewReader(file)
+	lineNumber := 0
+	for {
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return readErr
+		}
+		if line == "" && errors.Is(readErr, io.EOF) {
+			break
+		}
+
+		lineNumber++
+		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		// Windows 编辑器常会写入 UTF-8 BOM，但它不属于第一个变量名。
+		if lineNumber == 1 {
+			line = strings.TrimPrefix(line, "\uFEFF")
+		}
+		parseLineNumber := lineNumber
 		if quote, unclosed := unclosedOpeningQuote(line); unclosed {
 			var multiline strings.Builder
 			multiline.Grow(len(line))
 			multiline.WriteString(line)
-			for index+1 < len(lines) {
-				index++
-				nextLine := strings.TrimSuffix(lines[index], "\r")
+			for {
+				nextLine, nextReadErr := reader.ReadString('\n')
+				if nextReadErr != nil && !errors.Is(nextReadErr, io.EOF) {
+					return nextReadErr
+				}
+				if nextLine == "" && errors.Is(nextReadErr, io.EOF) {
+					break
+				}
+
+				lineNumber++
+				nextLine = strings.TrimSuffix(strings.TrimSuffix(nextLine, "\n"), "\r")
 				multiline.WriteByte('\n')
 				multiline.WriteString(nextLine)
 				if closingQuoteFrom(nextLine, quote) >= 0 {
+					break
+				}
+				if errors.Is(nextReadErr, io.EOF) {
 					break
 				}
 			}
@@ -70,10 +97,13 @@ func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string)
 		}
 		key, value, ok, nErr := parseLine(doubleQuotedReplacer, line)
 		if nErr != nil {
-			return fmt.Errorf("%s:%d: %w", filename, lineNumber, nErr)
+			return fmt.Errorf("%s:%d: %w", filename, parseLineNumber, nErr)
 		}
 		if ok {
 			env.values[key] = value
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
 		}
 	}
 	return nil
