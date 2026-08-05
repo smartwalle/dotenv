@@ -24,14 +24,7 @@ func Load(filenames ...string) (*Env, error) {
 	if len(filenames) == 0 || len(filenames) == 1 && strings.TrimSpace(filenames[0]) == "" {
 		filenames = []string{".env"}
 	}
-	// 双引号值的转义替换规则。
-	var doubleQuotedReplacer = strings.NewReplacer(
-		`\n`, "\n",
-		`\r`, "\r",
-		`\t`, "\t",
-		`\"`, `"`,
-		`\\`, `\`,
-	)
+	doubleQuotedReplacer := newDoubleQuotedReplacer()
 
 	for _, filename := range filenames {
 		if err := loadFile(env, doubleQuotedReplacer, filename); err != nil {
@@ -49,9 +42,30 @@ func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
-	reader := bufio.NewReader(file)
+	return parseReader(env, doubleQuotedReplacer, file, filename)
+}
+
+// Parse 读取 reader 中的 .env 内容并返回 Env。Parse 不会关闭 reader。
+func Parse(reader io.Reader) (*Env, error) {
+	if reader == nil {
+		return nil, errors.New("dotenv: nil reader")
+	}
+
+	env := &Env{values: make(map[string]string)}
+	if err := parseReader(env, newDoubleQuotedReplacer(), reader, ""); err != nil {
+		return nil, err
+	}
+	return env, nil
+}
+
+// parseReader 逐行读取输入，将未闭合引号值合并为逻辑行后解析。source 用于定位解析错误；
+// source 为空时，错误仅包含行号。
+func parseReader(env *Env, doubleQuotedReplacer *strings.Replacer, input io.Reader, source string) error {
+	reader := bufio.NewReader(input)
 	lineNumber := 0
 	for {
 		line, readErr := reader.ReadString('\n')
@@ -95,9 +109,12 @@ func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string)
 			}
 			line = multiline.String()
 		}
-		key, value, ok, nErr := parseLine(doubleQuotedReplacer, line)
-		if nErr != nil {
-			return fmt.Errorf("%s:%d: %w", filename, parseLineNumber, nErr)
+		key, value, ok, err := parseLine(doubleQuotedReplacer, line)
+		if err != nil {
+			if source == "" {
+				return fmt.Errorf("line %d: %w", parseLineNumber, err)
+			}
+			return fmt.Errorf("%s:%d: %w", source, parseLineNumber, err)
 		}
 		if ok {
 			env.values[key] = value
@@ -107,6 +124,16 @@ func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string)
 		}
 	}
 	return nil
+}
+
+func newDoubleQuotedReplacer() *strings.Replacer {
+	return strings.NewReplacer(
+		`\n`, "\n",
+		`\r`, "\r",
+		`\t`, "\t",
+		`\"`, `"`,
+		`\\`, `\`,
+	)
 }
 
 // Lookup 返回已加载文件中的键值；键不存在时回退查询进程环境变量。返回的布尔值表示
