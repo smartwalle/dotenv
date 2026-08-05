@@ -22,23 +22,6 @@ func Load(filenames ...string) (*Env, error) {
 	if len(filenames) == 0 || len(filenames) == 1 && strings.TrimSpace(filenames[0]) == "" {
 		filenames = []string{".env"}
 	}
-	for _, filename := range filenames {
-		if err := loadFile(env, filename); err != nil {
-			return nil, err
-		}
-	}
-	return env, nil
-}
-
-func loadFile(env *Env, filename string) error {
-	contents, err := os.ReadFile(filename)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
 	// 双引号值的转义替换规则。
 	var doubleQuotedReplacer = strings.NewReplacer(
 		`\n`, "\n",
@@ -47,6 +30,23 @@ func loadFile(env *Env, filename string) error {
 		`\"`, `"`,
 		`\\`, `\`,
 	)
+
+	for _, filename := range filenames {
+		if err := loadFile(env, doubleQuotedReplacer, filename); err != nil {
+			return nil, err
+		}
+	}
+	return env, nil
+}
+
+func loadFile(env *Env, doubleQuotedReplacer *strings.Replacer, filename string) error {
+	contents, err := os.ReadFile(filename)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 
 	// Windows 编辑器常会写入 UTF-8 BOM，但它不属于第一个变量名。
 	lines := strings.Split(strings.TrimPrefix(string(contents), "\uFEFF"), "\n")
