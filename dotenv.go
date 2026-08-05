@@ -9,15 +9,6 @@ import (
 	"strings"
 )
 
-// doubleQuotedReplacer 复用双引号值的转义替换规则，避免每次解析时创建替换器。
-var doubleQuotedReplacer = strings.NewReplacer(
-	`\n`, "\n",
-	`\r`, "\r",
-	`\t`, "\t",
-	`\"`, `"`,
-	`\\`, `\`,
-)
-
 // Env 保存从 .env 文件读取的值。文件中不存在的键会回退查询进程环境变量。
 type Env struct {
 	values map[string]string
@@ -48,6 +39,15 @@ func loadFile(env *Env, filename string) error {
 		return err
 	}
 
+	// 双引号值的转义替换规则。
+	var doubleQuotedReplacer = strings.NewReplacer(
+		`\n`, "\n",
+		`\r`, "\r",
+		`\t`, "\t",
+		`\"`, `"`,
+		`\\`, `\`,
+	)
+
 	// Windows 编辑器常会写入 UTF-8 BOM，但它不属于第一个变量名。
 	lines := strings.Split(strings.TrimPrefix(string(contents), "\uFEFF"), "\n")
 	for index := 0; index < len(lines); index++ {
@@ -68,9 +68,9 @@ func loadFile(env *Env, filename string) error {
 			}
 			line = multiline.String()
 		}
-		key, value, ok, err := parseLine(line)
-		if err != nil {
-			return fmt.Errorf("%s:%d: %w", filename, lineNumber, err)
+		key, value, ok, nErr := parseLine(doubleQuotedReplacer, line)
+		if nErr != nil {
+			return fmt.Errorf("%s:%d: %w", filename, lineNumber, nErr)
 		}
 		if ok {
 			env.values[key] = value
@@ -154,8 +154,7 @@ func (e *Env) Float64(key string) float64 {
 	return value
 }
 
-// Inject 将从 .env 文件加载的值写入当前进程环境变量，并覆盖同名变量。仅通过 Lookup
-// 回退获取的环境变量不会被注入。
+// Inject 将从 .env 文件加载的值写入当前进程环境变量，并覆盖同名变量。
 func (e *Env) Inject() error {
 	for key, value := range e.values {
 		if err := os.Setenv(key, value); err != nil {
@@ -175,7 +174,7 @@ func validateEnvironmentVariable(key, value string) error {
 	return nil
 }
 
-func parseLine(line string) (key, value string, ok bool, err error) {
+func parseLine(doubleQuotedReplacer *strings.Replacer, line string) (key, value string, ok bool, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") {
 		return "", "", false, nil
