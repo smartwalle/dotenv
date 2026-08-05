@@ -417,6 +417,8 @@ func parseLine(doubleQuotedReplacer *strings.Replacer, line string) (key, value 
 		value = value[1:end]
 		if quote == '"' {
 			value = doubleQuotedReplacer.Replace(value)
+		} else {
+			value = strings.ReplaceAll(value, `\'`, `'`)
 		}
 	} else if index := unquotedComment(value); index >= 0 {
 		value = strings.TrimSpace(value[:index])
@@ -428,11 +430,12 @@ func parseLine(doubleQuotedReplacer *strings.Replacer, line string) (key, value 
 }
 
 func validKey(key string) bool {
-	if key == "" {
+	if len(key) == 0 || !((key[0] >= 'A' && key[0] <= 'Z') || (key[0] >= 'a' && key[0] <= 'z') || key[0] == '_') {
 		return false
 	}
-	for index, char := range key {
-		if (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || char == '_' || (index > 0 && char >= '0' && char <= '9') || char == '.' || char == '-' {
+	for index := 1; index < len(key); index++ {
+		char := key[index]
+		if (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || char == '_' || (char >= '0' && char <= '9') {
 			continue
 		}
 		return false
@@ -499,7 +502,7 @@ func closingQuoteFrom(value string, quote byte) int {
 		if value[index] != quote {
 			continue
 		}
-		if quote == '"' && escaped(value, index) {
+		if escaped(value, index) {
 			continue
 		}
 		return index
