@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,14 +15,24 @@ import (
 
 // Env 保存从 .env 文件读取的值。文件中不存在的键会回退查询进程环境变量。
 type Env struct {
-	values map[string]string
+	values   map[string]entry
+	expanded bool
+}
+
+// entry 保存已解析的值及变量展开所需的元信息。singleQuoted 标识值来自单引号，展开时
+// 保持字面量；source 和 line 用于定位展开错误，source 为空表示值来自 io.Reader。
+type entry struct {
+	value        string
+	singleQuoted bool
+	source       string
+	line         int
 }
 
 // Load 读取指定的 .env 文件。未传入文件名时读取当前目录的 .env；多个文件按参数顺序
 // 加载，后面的文件会覆盖前面文件中的同名键。不存在的文件视为空文件，使 Lookup 可以
 // 回退查询进程环境变量。
 func Load(filenames ...string) (*Env, error) {
-	env := &Env{values: make(map[string]string)}
+	env := newEnv()
 	if len(filenames) == 0 || len(filenames) == 1 && strings.TrimSpace(filenames[0]) == "" {
 		filenames = []string{".env"}
 	}
@@ -56,7 +67,7 @@ func Parse(reader io.Reader) (*Env, error) {
 		return nil, errors.New("dotenv: nil reader")
 	}
 
-	env := &Env{values: make(map[string]string)}
+	env := newEnv()
 	if err := parseReader(env, newDoubleQuotedReplacer(), reader, ""); err != nil {
 		return nil, err
 	}
@@ -110,7 +121,7 @@ func parseReader(env *Env, doubleQuotedReplacer *strings.Replacer, input io.Read
 			}
 			line = multiline.String()
 		}
-		key, value, ok, err := parseLine(doubleQuotedReplacer, line)
+		key, value, singleQuoted, ok, err := parseLine(doubleQuotedReplacer, line)
 		if err != nil {
 			if source == "" {
 				return fmt.Errorf("line %d: %w", parseLineNumber, err)
@@ -118,7 +129,12 @@ func parseReader(env *Env, doubleQuotedReplacer *strings.Replacer, input io.Read
 			return fmt.Errorf("%s:%d: %w", source, parseLineNumber, err)
 		}
 		if ok {
-			env.values[key] = value
+			env.values[key] = entry{
+				value:        value,
+				singleQuoted: singleQuoted,
+				source:       source,
+				line:         parseLineNumber,
+			}
 		}
 		if errors.Is(readErr, io.EOF) {
 			break
@@ -137,11 +153,15 @@ func newDoubleQuotedReplacer() *strings.Replacer {
 	)
 }
 
+func newEnv() *Env {
+	return &Env{values: make(map[string]entry)}
+}
+
 // Lookup 返回已加载文件中的键值；键不存在时回退查询进程环境变量。返回的布尔值表示
 // 任一来源是否包含该键。
 func (e *Env) Lookup(key string) (string, bool) {
 	if value, ok := e.values[key]; ok {
-		return value, true
+		return value.value, true
 	}
 	return os.LookupEnv(key)
 }
@@ -150,6 +170,85 @@ func (e *Env) Lookup(key string) (string, bool) {
 func (e *Env) Get(key string) string {
 	value, _ := e.Lookup(key)
 	return value
+}
+
+// Expand 展开已加载值中的 $NAME 和 ${NAME} 引用并返回新的 Env。无引号值和双引号值可
+// 展开，单引号值保持字面量；缺失变量、无效引用和循环引用会返回错误。Expand 不会修改
+// 原 Env，也不会注入进程环境变量。
+//
+// 流程：
+// 1. 按稳定顺序遍历已加载的 key。
+// 2. 递归解析文件内引用，并在缺失时回退查询进程环境变量。
+// 3. 检测循环引用，完成后将解析结果写入新的 Env。
+func (e *Env) Expand() (*Env, error) {
+	if e.expanded {
+		return e, nil
+	}
+
+	expanded := newEnv()
+	states := make(map[string]uint8, len(e.values))
+	path := make([]string, 0, len(e.values))
+	var expandKey func(string) (string, error)
+	expandKey = func(key string) (string, error) {
+		item := e.values[key]
+		switch states[key] {
+		case 1:
+			start := 0
+			for path[start] != key {
+				start++
+			}
+			cycle := append(append([]string(nil), path[start:]...), key)
+			return "", expandError(item, key, fmt.Errorf("expansion cycle: %s", strings.Join(cycle, " -> ")))
+		case 2:
+			return expanded.values[key].value, nil
+		}
+
+		states[key] = 1
+		path = append(path, key)
+		value := item.value
+		var err error
+		if !item.singleQuoted {
+			value, err = expandVariables(value, func(name string) (string, error) {
+				if _, ok := e.values[name]; ok {
+					return expandKey(name)
+				}
+				if value, ok := os.LookupEnv(name); ok {
+					return value, nil
+				}
+				return "", fmt.Errorf("undefined environment variable %q", name)
+			})
+		}
+		path = path[:len(path)-1]
+		if err != nil {
+			states[key] = 0
+			return "", expandError(item, key, err)
+		}
+
+		states[key] = 2
+		item.value = value
+		expanded.values[key] = item
+		return value, nil
+	}
+
+	keys := make([]string, 0, len(e.values))
+	for key := range e.values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if _, err := expandKey(key); err != nil {
+			return nil, err
+		}
+	}
+	expanded.expanded = true
+	return expanded, nil
+}
+
+func expandError(item entry, key string, err error) error {
+	if item.source == "" {
+		return fmt.Errorf("line %d: expand %q: %w", item.line, key, err)
+	}
+	return fmt.Errorf("%s:%d: expand %q: %w", item.source, item.line, key, err)
 }
 
 // LookupBool 返回键对应的布尔值。返回的布尔值表示键存在且值可解析为布尔值。
@@ -370,7 +469,7 @@ func (e *Env) lookupFloat(key string, bitSize int) (float64, bool) {
 // Inject 将从 .env 文件加载的值写入当前进程环境变量，并覆盖同名变量。
 func (e *Env) Inject() error {
 	for key, value := range e.values {
-		if err := os.Setenv(key, value); err != nil {
+		if err := os.Setenv(key, value.value); err != nil {
 			return fmt.Errorf("set environment variable %q: %w", key, err)
 		}
 	}
@@ -387,46 +486,117 @@ func validateEnvironmentVariable(key, value string) error {
 	return nil
 }
 
-func parseLine(doubleQuotedReplacer *strings.Replacer, line string) (key, value string, ok bool, err error) {
+func parseLine(doubleQuotedReplacer *strings.Replacer, line string) (key, value string, singleQuoted, ok bool, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" || strings.HasPrefix(line, "#") {
-		return "", "", false, nil
+		return "", "", false, false, nil
 	}
 	if strings.HasPrefix(line, "export ") || strings.HasPrefix(line, "export\t") {
 		line = strings.TrimSpace(line[len("export"):])
 	}
 	assignment, found := splitAssignment(line)
 	if !found {
-		return "", "", false, errors.New("expected KEY=VALUE")
+		return "", "", false, false, errors.New("expected KEY=VALUE")
 	}
 	key = strings.TrimSpace(assignment.key)
 	if !validKey(key) {
-		return "", "", false, errors.New("invalid key")
+		return "", "", false, false, errors.New("invalid key")
 	}
 	value = strings.TrimSpace(assignment.value)
 	if len(value) > 0 && (value[0] == '\'' || value[0] == '"') {
 		quote := value[0]
 		end := closingQuote(value, quote)
 		if end < 0 {
-			return "", "", false, errors.New("unterminated quoted value")
+			return "", "", false, false, errors.New("unterminated quoted value")
 		}
 		trailing := strings.TrimSpace(value[end+1:])
 		if trailing != "" && !strings.HasPrefix(trailing, "#") {
-			return "", "", false, errors.New("unexpected content after quoted value")
+			return "", "", false, false, errors.New("unexpected content after quoted value")
 		}
 		value = value[1:end]
 		if quote == '"' {
 			value = doubleQuotedReplacer.Replace(value)
 		} else {
+			singleQuoted = true
 			value = strings.ReplaceAll(value, `\'`, `'`)
 		}
 	} else if index := unquotedComment(value); index >= 0 {
 		value = strings.TrimSpace(value[:index])
 	}
 	if err = validateEnvironmentVariable(key, value); err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
-	return key, value, true, nil
+	return key, value, singleQuoted, true, nil
+}
+
+// expandVariables 仅解析有效变量引用；$$ 表示字面量美元符号，其他非变量形式的 $ 原样保留。
+func expandVariables(value string, lookup func(string) (string, error)) (string, error) {
+	var expanded strings.Builder
+	expanded.Grow(len(value))
+	for index := 0; index < len(value); {
+		if value[index] != '$' {
+			expanded.WriteByte(value[index])
+			index++
+			continue
+		}
+		if index+1 == len(value) {
+			expanded.WriteByte('$')
+			break
+		}
+		if value[index+1] == '$' {
+			expanded.WriteByte('$')
+			index += 2
+			continue
+		}
+
+		var name string
+		if value[index+1] == '{' {
+			end := strings.IndexByte(value[index+2:], '}')
+			if end < 0 {
+				return "", errors.New("unterminated variable reference")
+			}
+			name = value[index+2 : index+2+end]
+			if !validKey(name) {
+				return "", fmt.Errorf("invalid variable reference %q", value[index:index+3+end])
+			}
+			index += end + 3
+		} else {
+			length := variableNameLength(value[index+1:])
+			if length == 0 {
+				expanded.WriteByte('$')
+				index++
+				continue
+			}
+			name = value[index+1 : index+1+length]
+			index += length + 1
+		}
+
+		replacement, err := lookup(name)
+		if err != nil {
+			return "", err
+		}
+		expanded.WriteString(replacement)
+	}
+	return expanded.String(), nil
+}
+
+func variableNameLength(value string) int {
+	if len(value) == 0 || !isVariableNameStart(value[0]) {
+		return 0
+	}
+	length := 1
+	for length < len(value) && isVariableNamePart(value[length]) {
+		length++
+	}
+	return length
+}
+
+func isVariableNameStart(char byte) bool {
+	return (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || char == '_'
+}
+
+func isVariableNamePart(char byte) bool {
+	return isVariableNameStart(char) || (char >= '0' && char <= '9')
 }
 
 func validKey(key string) bool {
